@@ -111,15 +111,15 @@ def remove_watermark_process(seq_num, frames_num):
 
 
 # 多进程对帧序列去水印
-pool = multiprocessing.Pool(processes=8)
+pool = multiprocessing.Pool(processes=1)
 
 seq_count = math.ceil(eval(video_stream_info['nb_frames']) / frames_per_seq)
 
-for i in range(seq_count - 1):
+for i in range(seq_count - 5):
     pool.apply_async(remove_watermark_process, (i, frames_per_seq,))
 
-pool.apply_async(remove_watermark_process,
-                 (seq_count - 1, (eval(video_stream_info['nb_frames']) % frames_per_seq),))
+# pool.apply_async(remove_watermark_process,
+#                  (seq_count - 1, (eval(video_stream_info['nb_frames']) % frames_per_seq),))
 
 pool.close()
 pool.join()
