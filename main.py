@@ -56,6 +56,7 @@ start = time.time()
 
 
 # 去水印进程
+# 多线程实现
 def remove_watermark_process(seq_num, frames_num):
     # 提取帧序列
     folder_path = '.cache/' + str(seq_num)
