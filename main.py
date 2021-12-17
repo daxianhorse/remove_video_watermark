@@ -8,14 +8,15 @@ import multiprocessing
 import threading
 from pathlib import Path
 
-# 提取帧
-ffmpeg_bin = 'ffmpeg'
-ffprobe_bin = 'ffprobe'
-video_path = '/mnt/nvme0n1p1/Videos/down_bili/in.mp4'
+ffmpeg_bin = 'ffmpeg'  # ffmpeg路径
+ffprobe_bin = 'ffprobe'  # ffprobe路径
+video_path = 'input.mp4'  # 源文件路径
+dst_file_name = 'out.mkv'  # 目标文件名
 
 # 获取视频信息
 ffprobe_head = ffprobe_bin + " -v error -show_streams -select_streams v:0 -of json "
 
+# 用json方式记录捕获到的信息
 cat_info = subprocess.run(ffprobe_head.split() + [video_path],
                           capture_output=True)
 
@@ -33,10 +34,7 @@ extract_audio = subprocess.Popen([ffmpeg_bin,
                                   '.cache/src-audio.mkv'],
                                  )
 
-extract_audio.wait()
-
 # 载入mask
-
 extract_mask = subprocess.run(['./extract_mask.sh',
                                video_path
                                ],
@@ -52,7 +50,7 @@ def remove_watermark(file_path):
     cv2.imwrite(file_path, dst)
 
 
-frames_per_seq = 128
+frames_per_seq = 256
 
 start = time.time()
 
@@ -98,10 +96,14 @@ def remove_watermark_process(seq_num, frames_num):
         thread.join()
 
     merge_frames = subprocess.Popen([ffmpeg_bin, '-y',
+                                     '-vsync', '0',
+                                     '-hwaccel', 'cuda',
+                                     '-hwaccel_output_format', 'cuda',
                                      '-framerate', str(video_frame_rate),
                                      '-i', folder_path + '/im-%d.png',
                                      '-b:v', video_stream_info['bit_rate'],
-                                     '-c:v', video_stream_info['codec_name'],
+                                     # '-c:v', video_stream_info['codec_name'],
+                                     '-c:v', 'hevc_nvenc',
                                      '-pix_fmt', video_stream_info['pix_fmt'],
                                      'dst/' + str(seq_num) + '.mkv'])
 
@@ -111,15 +113,15 @@ def remove_watermark_process(seq_num, frames_num):
 
 
 # 多进程对帧序列去水印
-pool = multiprocessing.Pool(processes=1)
+pool = multiprocessing.Pool(processes=3)
 
 seq_count = math.ceil(eval(video_stream_info['nb_frames']) / frames_per_seq)
 
-for i in range(seq_count - 5):
+for i in range(seq_count - 1):
     pool.apply_async(remove_watermark_process, (i, frames_per_seq,))
 
-# pool.apply_async(remove_watermark_process,
-#                  (seq_count - 1, (eval(video_stream_info['nb_frames']) % frames_per_seq),))
+pool.apply_async(remove_watermark_process,
+                 (seq_count - 1, (eval(video_stream_info['nb_frames']) % frames_per_seq),))
 
 pool.close()
 pool.join()
@@ -127,22 +129,17 @@ pool.join()
 end = time.time()
 print(end - start)
 
-# 目标文件名
-dst_file_name = '3'
+merge_file = subprocess.run(['./merge.sh'], capture_output=True)
 
 extract_audio.wait()
 
-# merge_frame = subprocess.Popen([ffmpeg_bin, '-y',
-#                                  # '-f', 'image2',
-#                                  '-framerate', str(video_frame_rate),
-#                                  '-i', '.cache/im-%d.png',
-#                                  '-i', '.cache/src-audio.mkv',
-#                                  '-b:v', video_stream_info['bit_rate'],
-#                                  '-c:v', video_stream_info['codec_name'],
-#                                  '-pix_fmt', video_stream_info['pix_fmt'],
-#                                  '-c:a', 'copy',
-#                                  'dst/nice.mkv'])
-#
-# merge_frame.wait()
+merge_video = subprocess.run([ffmpeg_bin, '-y',
+                              '-i', 'output.mkv',
+                              '-i', '.cache/src-audio.mkv',
+                              '-c:v', 'copy',
+                              '-c:a', 'copy',
+                              dst_file_name]
+                             )
 
-# os.system('rm -rf .cache/*')
+os.system('rm output.mkv')
+os.system('rm -rf .cache/*')
